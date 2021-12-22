@@ -6,6 +6,7 @@ import pickle
 import copy
 import configparser
 import ast
+import os
 from collections import OrderedDict
 
 
@@ -20,7 +21,10 @@ def get_cmx_nn_info(path, num_total_cores):
 
     for i in reversed(range(1, num_total_cores+1)):
         # read csv
-        csv = pd.read_csv(path + '{}.csv'.format(i)) 
+        if not os.path.exists(f"{path}{i}.csv"):
+            continue
+
+        csv = pd.read_csv(path + '{}.csv'.format(i))
 
         tasks['{} Cores'.format(i)] = OrderedDict({})
 

@@ -75,6 +75,18 @@ def get_bench_numbers(nn, sim_obj, batch_size=1):
                 stats[layer_name] = [s, d, cmx, ex_p_c]
     return stats
 
+def get_bench_numbers(nn, sim_obj, model_name, batch_size=1):
+    stats = OrderedDict({})
+    for layer_name in nn.layer_dict:
+        if layer_name != nn.INPUT_LAYER_KEY:
+            layer = nn.layer_dict[layer_name]
+            #sim_obj.Search(layer)
+            out = sim_obj.get_cycles(layer, model_name, layer_name, batch_size)
+            if out is not None:
+                s, d, cmx, ex_p_c = out
+                stats[layer_name] = [s, d, cmx, ex_p_c]
+    return stats
+
 
 
 def get_alexnet():

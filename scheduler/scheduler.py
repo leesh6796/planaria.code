@@ -39,6 +39,10 @@ class TaskStats(object):
         This fucntion calculates the remaining estimated time to execute the NN with a specific number of subarrays (cores)
         """
         if num_cores > 0:
+            # precomputed 안된 코어는 할당받을 수 없게 한다.
+            if not f"{num_cores} Cores" in self.info:
+                return float('inf')
+
             nn_stats = self.info['{} Cores'.format(int(num_cores))]
             current_layer, progress = self.progress
             estimated_time = 0
@@ -228,8 +232,13 @@ def scheduler(workload, nn_info, QoS_dict, frequency, num_total_cores):
     PERIOD_REACHED = False
     ##### We add the first task, at cycle = 0
     TASK_ARRIVES = True
+
+    init_key = "16 Cores"
+    if not init_key in nn_info:
+        init_key = "8 Cores"
+
     task_queue[workload[0][1]] = TaskStats(workload[0][1], cycle, cycle, workload[0][2],\
-                                        QoS_dict[workload[0][1]], 0, (nn_info['16 Cores'][workload[0][1]][0][0], 0), nn_info)
+                                        QoS_dict[workload[0][1]], 0, (nn_info[init_key][workload[0][1]][0][0], 0), nn_info)
     del task_arrivals[list(task_arrivals.keys())[0]]
 
     print('task arrivals', task_arrivals)

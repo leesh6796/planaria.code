@@ -15,6 +15,8 @@ from sram.cacti_sweep import CactiSweep
 import os
 import pandas
 
+from pprint import pprint
+
 class Simulator(object):
     """
     Simulator class
@@ -27,10 +29,15 @@ class Simulator(object):
 
         self.config_file = config_file
 
+        prefix = "-".join(config_file.split("-")[:-1])
+        real_config_file = prefix + "-16.ini"
+        num_core = int(config_file.split("-")[-1].replace(".ini", ""))
+
+        self.solo_mode = False
+
         self.config = configparser.ConfigParser()
-        self.config.read(config_file)
-
-
+        #self.config.read(config_file)
+        self.config.read(real_config_file)
 
         if verbose:
             log_level = logging.DEBUG
@@ -57,13 +64,17 @@ class Simulator(object):
         systolic_dim = [self.config.getint('accelerator', 'row'),
                              1,
                              self.config.getint('accelerator', 'col')]
+        self.systolic_dim = systolic_dim
         self.logger.debug("Systolic Array dimentions for each core: {}".format(systolic_dim))
         num_cores = self.config.getint('accelerator', 'num_cores')
         self.logger.debug("Number of Accelerator Cores: {}".format(num_cores))
         num_pods = self.config.getint('accelerator', 'num_pods')
         self.logger.debug("Number of Accelerator Pods: {}".format(num_pods))
-        num_active_cores = self.config.getint('accelerator', 'num_active_cores')
-        self.logger.debug("Number of Ative Cores: {}".format(num_active_cores))
+        
+        # 여기서 cmx-{} 부분 파싱해 num_active_cores를 결정
+        # num_active_cores = self.config.getint('accelerator', 'num_active_cores')
+        # self.logger.debug("Number of Ative Cores: {}".format(num_active_cores))
+        num_active_cores = num_core
         self.num_active_cores = num_active_cores
 
         wgt_w = self.config.getint('accelerator', 'wgt_w')
@@ -130,6 +141,12 @@ class Simulator(object):
 
 
 
+    def run_solo_mode(self, opt_fission):
+        self.solo_mode = True
+        self.opt_fission = opt_fission
+
+
+
 
     def map_set_composed_core(self, num_threads, composed_core_configs):
         """
@@ -148,6 +165,7 @@ class Simulator(object):
             configs_need_pods_to_compose_list = [(1,16), (16,1), (2,8), (8,2), (4,4), (1,8), (8,1), (2,4), (4,2)]
             pod_composition_configs_list = [(1,4), (4,1), (2,4), (4,2), (2,2), (1,2), (2,1), (1,2), (2,1)]
 
+            print(composed_core_configs)
             pod_composition_config = pod_composition_configs_list[configs_need_pods_to_compose_list.index(composed_core_configs)]
 
             for i in range(int(num_threads)):
@@ -282,6 +300,7 @@ class Simulator(object):
 
 
         cfg_dict = {'size (bytes)': act_sram_bank_size /8., 'block size (bytes)': act_sram_bits/8., 'read-write port': 0}
+        print(cfg_dict)
         act_sram_data = self.sram_obj.get_data_clean(cfg_dict)
         act_sram_read_energy = float(act_sram_data['read_energy_nJ']) / act_sram_bits
         act_sram_write_energy = float(act_sram_data['write_energy_nJ']) / act_sram_bits
@@ -415,6 +434,7 @@ class Simulator(object):
         """
         composition_config_stats_list = []
         possible_num_threads, possible_composition_configs = self.possible_composition_configs
+
         for i in range(len(possible_composition_configs)):
             num_threads = possible_num_threads[i]
             composition_config = possible_composition_configs[i]
@@ -492,6 +512,50 @@ class Simulator(object):
                 stats.energy *= layer.nifm
                 for n in stats.namespaces:
                     stats.reads[n] *= layer.nifm
+                    stats.writes[n] *= layer.nifm
+                stats.data_dispatch_hops *= layer.nifm
+                stats.wgt_bus_hops *= layer.nifm
+
+
+                ic_tuple = dataflow[0]['IC/ic']
+                ic_tile_tuple = (ic_tuple[0] * layer.nifm, ic_tuple[1])
+
+                dataflow[0]['IC/ic']= ic_tile_tuple
+
+
+                return stats, dataflow, cmx, executing_pod_core
+            else:
+                return self.get_conv_cycles(layer.sfil,  # K
+                                        layer.hofm,  # Oh == Ow
+                                        layer.htrd,  # S
+                                        layer.nifm,  # NI
+                                        layer.nofm,  # NO
+                                        layer.iprec,  # Activation Precision
+                                        layer.wprec,  # Weight Precision
+                                        batch_size, # Batch Size
+                                        im2col=True)  # Batch Size
+
+    # Solo mode에서 사용하는 get_cycles
+    def get_cycles(self, layer, model_name, layer_name, batch_size=1):
+        if isinstance(layer, ConvLayer):
+            opt_fission = self.opt_fission[model_name][layer_name]
+            arr_row = self.systolic_dim[0]
+            arr_col = self.systolic_dim[2]
+            N = opt_fission[0] / arr_row
+            M = opt_fission[1] / arr_col
+            thread = opt_fission[2]
+            self.possible_composition_configs = ([thread], [(N, M)])
+
+            print(model_name, layer_name, layer)
+            if isinstance(layer, DWConvLayer):
+                stats, dataflow, cmx, executing_pod_core = self.get_conv_cycles(layer.sfil, layer.hofm, layer.htrd, 1, 1, layer.iprec, layer.wprec, batch_size, im2col=True)
+
+
+                stats.total_cycles *= layer.nifm
+                stats.mem_stall_cycles *= layer.nifm
+                stats.energy *= layer.nifm
+                for n in stats.namespaces:
+                    stats.reads[n] * layer.nifm
                     stats.writes[n] *= layer.nifm
                 stats.data_dispatch_hops *= layer.nifm
                 stats.wgt_bus_hops *= layer.nifm

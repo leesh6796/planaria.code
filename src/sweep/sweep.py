@@ -79,8 +79,11 @@ class SimulatorSweep(object):
                 stats_en.update(stats_de)
                 stats = stats_en
             else:
+                if sim_obj.solo_mode:
+                    stats = benchmarks.get_bench_numbers(nn, sim_obj, b, batch_size)
+                else:
+                    stats = benchmarks.get_bench_numbers(nn, sim_obj, batch_size)
 
-                stats = benchmarks.get_bench_numbers(nn, sim_obj, batch_size)
             for layer in stats:
                 stats_list = stats[layer]
                 stats_stats = stats_list[0]

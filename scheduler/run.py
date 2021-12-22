@@ -7,6 +7,7 @@ import copy
 import configparser
 import ast
 from collections import OrderedDict
+from pprint import pprint
 
 from generator import WorkloadGenerator
 from scheduler import scheduler
@@ -42,7 +43,10 @@ def main():
     task_types = list(QoS_dict.keys())
 
     ### Path to input CSVs of the Planaria performance numbers for various number of subarrays and their optimized fission configuration
-    path_to_input_csv = ast.literal_eval(config.get('csv_path', 'path_to_input_csv_files'))
+    #path_to_input_csv = ast.literal_eval(config.get('csv_path', 'path_to_input_csv_files'))
+
+    exp_name = "BW-350-IF-8-WGT-4"
+    path_to_input_csv = f"../numbers/{exp_name}/planaria-hardware-summary-"
 
     ######## Output results file names
     output_file_name = 'scheduled-workload-planaria.data'
@@ -55,6 +59,8 @@ def main():
 
     ######## Getting the DNN tasks info from csvs
     nn_info = get_cmx_nn_info(path_to_input_csv, num_total_cores)
+    pprint(nn_info)
+
 
     ### Isolated execution time of the DNN tasks
     nn_isolated_time_info = nn_info['{} Cores'.format(num_total_cores)]

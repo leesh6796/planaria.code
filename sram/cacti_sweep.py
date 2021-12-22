@@ -64,6 +64,11 @@ class CactiSweep(object):
                     o = o.replace(')', '\)')
                     o = o.replace('^', '\^')
                     regex = r"{}\s*:\s*([\d\.]*)".format(o)
+                    
+                    # Done: CACTI BUG FIX
+                    if type(line) == bytes:
+                        line = line.decode("utf-8")
+
                     m = re.match(regex, line)
                     if m:
                         parsed_results[key] = m.groups()[0]

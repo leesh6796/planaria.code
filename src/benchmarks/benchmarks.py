@@ -15,20 +15,23 @@ import os
 
 
 benchlist = [\
-              'GoogleNet', \
-              'RESNET-50', \
-              'MobileNet-v1',\
-              'Tiny-YOLO',\
-              'SSD-ResNet-34',\
-              'SSD-MobileNet-v1',\
-              'GNMT',\
-              'YOLOv3'\
+               'GoogleNet', \
+               'RESNET-50', \
+            #   'Tiny-YOLO',\
+            #   'SSD-ResNet-34',\
+            #   'SSD-MobileNet-v1',\
+            #   'GNMT',\
+            #   'YOLOv3'\
+                'MobileNet-v1', \
+                'AlexNet'
             ]
 
 
 def get_bench_nn(bench_name):
     if bench_name == 'RESNET-50':
         return get_resnet_50()
+    elif bench_name == "AlexNet":
+        return get_alexnet()
     elif bench_name == 'GoogleNet':
         return get_googlenet()
     elif bench_name == 'MobileNet-v1':
@@ -73,6 +76,28 @@ def get_bench_numbers(nn, sim_obj, batch_size=1):
     return stats
 
 
+
+def get_alexnet():
+    NN = Network('AlexNet')
+    NN.set_input(InputLayer(3, 227))
+
+    NN.add('conv1', ConvLayer(3, 96, 55, 11, strd =4, iprec=16, wprec=16),
+            prevs=(NN.INPUT_LAYER_KEY,))
+    NN.add('pool1', ConvLayer(96, 96, 27, 3, strd=2, iprec=16, wprec=16),
+            prevs=('conv1',))
+
+    NN.add('conv2', ConvLayer(96, 256, 27, 5, strd=1, iprec=16, wprec=16),
+            prevs=('pool1',))
+    NN.add('pool2', ConvLayer(256, 256, 13, 3, strd=2, iprec=16, wprec=16),
+            prevs=('conv2',))
+
+    NN.add('conv3', ConvLayer(256, 384, 13, 3, strd=1, iprec=16, wprec=16),
+            prevs=('pool2',))
+    NN.add('conv4', ConvLayer(384, 384, 13, 3, strd=1, iprec=16, wprec=16),
+            prevs=('conv3',))
+    NN.add('conv5', ConvLayer(384, 256,  13, 3, strd=1, iprec=16, wprec=16),
+            prevs=('conv4',))
+    return NN
 
 
 def get_mobilenet_v1():

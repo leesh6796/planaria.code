@@ -7,6 +7,7 @@ import copy
 import configparser
 import ast
 from collections import OrderedDict
+from pprint import pprint
 
 
 
@@ -57,6 +58,31 @@ class TaskStats(object):
                     break  
                 else:
                     estimated_time += layer_stats[1] * layer_stats[2]            
+        else:
+            estimated_time = float('inf')
+        
+        return estimated_time
+
+    def get_curr_layer_remaining_estimated_time(self, num_cores):
+        """
+        This fucntion calculates the remaining estimated time to execute the NN with a specific number of subarrays (cores)
+        """
+        if num_cores > 0:
+            # precomputed 안된 코어는 할당받을 수 없게 한다.
+            if not f"{num_cores} Cores" in self.info:
+                return float('inf')
+
+            nn_stats = self.info['{} Cores'.format(int(num_cores))]
+            current_layer, progress = self.progress
+            estimated_time = 0
+
+            for idx, layer_stats in enumerate(reversed(nn_stats)):
+                if layer_stats[0] == current_layer:
+                    ##### We need to estimate the remaining jobs of the current layer
+                    layer_total_cycles = layer_stats[1] * layer_stats[2]
+                    layer_remaining_cycles = self.get_time_to_finish_current_layer(num_cores)
+                    estimated_time += layer_remaining_cycles
+                    break
         else:
             estimated_time = float('inf')
         
@@ -113,7 +139,7 @@ class TaskStats(object):
             
             time_to_finish_current_layer = self.get_time_to_finish_current_layer(num_cores)
 
-            if next_raw_scheduling_time <= time_to_finish_current_layer:
+            if next_raw_scheduling_time < time_to_finish_current_layer:
                 num_tiles = math.ceil(next_raw_scheduling_time / float(current_layer_stats[2]))
                 proposed_scheduling_time = num_tiles * current_layer_stats[2]
                 new_progress = progress + num_tiles/float(current_layer_stats[1])
@@ -121,46 +147,55 @@ class TaskStats(object):
                 result = [proposed_scheduling_time, new_layer, new_progress]
                 
             else:
+                # planaria에서는 next_scheduling_time 전까지 CS 안한다.
                 proposed_scheduling_time += time_to_finish_current_layer
-                for layer_idx in range(nn_stats.index(current_layer_stats)+1, len(nn_stats)):
-                    layer_time = nn_stats[layer_idx][1] * nn_stats[layer_idx][2]
-                    remaining_time = next_raw_scheduling_time - proposed_scheduling_time
-                    if layer_time < remaining_time:
-                        proposed_scheduling_time += layer_time
+                layer_idx = nn_stats.index(current_layer_stats)
+                if layer_idx == len(nn_stats) - 1:
+                    new_layer = nn_stats[layer_idx][0]
+                    new_progress = 1
+                else:
+                    new_layer = nn_stats[layer_idx+1][0]
+                    new_progress = 0
+                result = [proposed_scheduling_time, new_layer, new_progress]
+                # for layer_idx in range(nn_stats.index(current_layer_stats)+1, len(nn_stats)):
+                #     layer_time = nn_stats[layer_idx][1] * nn_stats[layer_idx][2]
+                #     remaining_time = next_raw_scheduling_time - proposed_scheduling_time
+                #     if layer_time < remaining_time:
+                #         proposed_scheduling_time += layer_time
                         
-                    elif layer_time == remaining_time:
-                        proposed_scheduling_time += layer_time
-                        if layer_idx == len(nn_stats) - 1:
-                            new_layer = nn_stats[layer_idx][0]
-                            new_progress = 1
-                        else:
-                            new_layer = nn_stats[layer_idx+1][0]
-                            new_progress = 0
-                        result = [proposed_scheduling_time, new_layer, new_progress]
-                        break
+                #     elif layer_time == remaining_time:
+                #         proposed_scheduling_time += layer_time
+                #         if layer_idx == len(nn_stats) - 1:
+                #             new_layer = nn_stats[layer_idx][0]
+                #             new_progress = 1
+                #         else:
+                #             new_layer = nn_stats[layer_idx+1][0]
+                #             new_progress = 0
+                #         result = [proposed_scheduling_time, new_layer, new_progress]
+                #         break
 
-                    else:
-                        num_tiles = math.ceil(remaining_time / float(nn_stats[layer_idx][2]))
-                        final_time = num_tiles * nn_stats[layer_idx][2]
+                #     else:
+                #         num_tiles = math.ceil(remaining_time / float(nn_stats[layer_idx][2]))
+                #         final_time = num_tiles * nn_stats[layer_idx][2]
 
-                        if final_time == layer_time:
-                            proposed_scheduling_time += layer_time
-                            if layer_idx < len(nn_stats) - 1:
+                #         if final_time == layer_time:
+                #             proposed_scheduling_time += layer_time
+                #             if layer_idx < len(nn_stats) - 1:
 
-                                new_layer = nn_stats[layer_idx+1][0]
-                                new_progress = 0
-                            else:
-                                new_layer = nn_stats[layer_idx][0]
-                                new_progress = 1
-                            result = [proposed_scheduling_time, new_layer, new_progress]
-                            break
-                        else:
-                            assert final_time < layer_time, "We cannot finish this layer!"
-                            proposed_scheduling_time += final_time
-                            new_layer = nn_stats[layer_idx][0]
-                            new_progress = float(num_tiles) / float(nn_stats[layer_idx][1])
-                            result = [proposed_scheduling_time, new_layer, new_progress]
-                            break
+                #                 new_layer = nn_stats[layer_idx+1][0]
+                #                 new_progress = 0
+                #             else:
+                #                 new_layer = nn_stats[layer_idx][0]
+                #                 new_progress = 1
+                #             result = [proposed_scheduling_time, new_layer, new_progress]
+                #             break
+                #         else:
+                #             assert final_time < layer_time, "We cannot finish this layer!"
+                #             proposed_scheduling_time += final_time
+                #             new_layer = nn_stats[layer_idx][0]
+                #             new_progress = float(num_tiles) / float(nn_stats[layer_idx][1])
+                #             result = [proposed_scheduling_time, new_layer, new_progress]
+                #             break
         else:
             current_layer, progress = self.progress
             result = [next_raw_scheduling_time, current_layer, progress]
@@ -232,11 +267,13 @@ def scheduler(workload, nn_info, QoS_dict, frequency, num_total_cores):
     PERIOD_REACHED = False
     ##### We add the first task, at cycle = 0
     TASK_ARRIVES = True
+    TASK_CS = False
 
     init_key = "16 Cores"
     if not init_key in nn_info:
         init_key = "8 Cores"
 
+    # workload[0] = (0, 'YOLOv3', 2)
     task_queue[workload[0][1]] = TaskStats(workload[0][1], cycle, cycle, workload[0][2],\
                                         QoS_dict[workload[0][1]], 0, (nn_info[init_key][workload[0][1]][0][0], 0), nn_info)
     del task_arrivals[list(task_arrivals.keys())[0]]
@@ -244,15 +281,20 @@ def scheduler(workload, nn_info, QoS_dict, frequency, num_total_cores):
     print('task arrivals', task_arrivals)
     print('{} Arrives'.format(task_queue[workload[0][1]].task_name) )
 
+    num_context_switch = 0
+    
 
     ##### We keep scheduling until all the tasks are finished
     period_counter = 0
     while len(done_tasks_list) < len(workload):
 
         #### At these curcumestances we need to update the schedule
-        if TASK_ARRIVES or TASK_FINISHES or PERIOD_REACHED:
+        if TASK_ARRIVES or TASK_FINISHES or PERIOD_REACHED or TASK_CS:
+            num_context_switch += 1
 
-            print('Number of finished tasks', len(done_tasks_list))
+            if not TASK_CS:
+                print('Number of finished tasks', len(done_tasks_list))
+
             possible_num_cores_dict = {}
 
             for key, task in task_queue.items():
@@ -266,20 +308,28 @@ def scheduler(workload, nn_info, QoS_dict, frequency, num_total_cores):
             else:
                 tasks_cores = assign_cores_if_tasks_not_fit(task_queue, possible_num_cores_dict, num_total_cores, frequency)
 
+            # pprint(tasks_cores)
+
             ##### Now we need to figure out what is the next scheduling time
             ##### First we see when the tasks are gonna be finished
             if len(list(task_queue.keys())) > 0:
 
                 task_estimated_finish_time = {}
+                task_estimated_layer_end_time = {}
                 for key, task in task_queue.items():
                     task_est_finish = task.get_remaining_estimated_time(tasks_cores[key])
+                    task_est_layer_end_time = task.get_curr_layer_remaining_estimated_time(tasks_cores[key])
                     task_estimated_finish_time[key] = task_est_finish
+                    task_estimated_layer_end_time[key] = task_est_layer_end_time
 
                 ##### we sort the task finish time from min to max to find the closest one
                 task_estimated_finish_time_sorted = sorted(task_estimated_finish_time.items(), key=lambda kv: kv[1], reverse=False)
+                task_estimated_layer_end_time_sorted = sorted(task_estimated_layer_end_time.items(), key=lambda kv: kv[1], reverse=False)
 
                 ##### Next task to finish
                 next_task_to_finish_name, next_task_to_finish_time = task_estimated_finish_time_sorted[0]
+                ##### Next layer end time
+                _, next_task_layer_end_time = task_estimated_layer_end_time_sorted[0]
                 ##### Next period arrival
                 next_period_time = (period_counter + 1) * period - cycle
                 ##### Next task arrival
@@ -292,7 +342,7 @@ def scheduler(workload, nn_info, QoS_dict, frequency, num_total_cores):
 
                 ##### Now we update the cycles of tasks and set the next scheduling time
                 if next_task_arrival_time is not None:
-                    next_scheduling_time = min(next_task_to_finish_time, next_period_time, next_task_arrival_time)
+                    next_scheduling_time = min(next_task_to_finish_time, next_period_time, next_task_arrival_time, next_task_layer_end_time)
 
 
                     proposed_scheduling_time_dict = {}
@@ -306,8 +356,9 @@ def scheduler(workload, nn_info, QoS_dict, frequency, num_total_cores):
 
                     if next_scheduling_time == next_task_to_finish_time:
                         ##### The next scheduling time will be when a task finishes
-                        assert final_proposed_scheduling_time < next_task_arrival_time and final_proposed_scheduling_time < next_period_time, \
-                                                            "Due to the tile asynchronity, the next scheduling policy has changed! Task should finish" 
+                        # print(final_proposed_scheduling_time, next_task_arrival_time, next_period_time)
+                        # assert final_proposed_scheduling_time < next_task_arrival_time and final_proposed_scheduling_time < next_period_time, \
+                                                            # "Due to the tile asynchronity, the next scheduling policy has changed! Task should finish" 
                         
                         ##### Now we need to update the tasks based on the proposed scheduling time
                         for key, task in task_queue.items():
@@ -316,12 +367,22 @@ def scheduler(workload, nn_info, QoS_dict, frequency, num_total_cores):
                         ##### We update the global scheduler
                         print('{} finished'.format(next_task_to_finish_name))
                         cycle += final_proposed_scheduling_time
-                        print("task doen", cycle)
+                        print("task done", cycle)
                         done_tasks_list.append(task_queue[next_task_to_finish_name])
                         del task_queue[next_task_to_finish_name]
                         TASK_FINISHES = True
                         TASK_ARRIVES = False
                         PERIOD_REACHED = False
+                        TASK_CS = False
+
+                    elif next_scheduling_time == next_task_layer_end_time: # layer 끝나서 CS
+                        for key, task in task_queue.items():
+                            task.update_task(proposed_scheduling_time_dict[key], final_proposed_scheduling_time, tasks_cores[key])
+                            cycle += final_proposed_scheduling_time
+                        TASK_FINISHES = False
+                        TASK_ARRIVES = False
+                        PERIOD_REACHED = False
+                        TASK_CS = True
                         
                     
                     elif next_scheduling_time == next_period_time:
@@ -338,12 +399,13 @@ def scheduler(workload, nn_info, QoS_dict, frequency, num_total_cores):
                         PERIOD_REACHED = True
                         TASK_FINISHES = False
                         TASK_ARRIVES = False
+                        TASK_CS = False
                     
                     elif next_scheduling_time == next_task_arrival_time:
                         ##### The next scheduling time will be when the next task arrives
-
-                        assert final_proposed_scheduling_time < next_task_to_finish_time and final_proposed_scheduling_time < next_period_time, \
-                                                            "Due to the tile asynchronity, the next scheduling policy has changed! Task should finish" 
+                        # print(final_proposed_scheduling_time, next_task_to_finish_time, next_period_time)
+                        # assert final_proposed_scheduling_time < next_task_to_finish_time and final_proposed_scheduling_time < next_period_time, \
+                                                            # "Due to the tile asynchronity, the next scheduling policy has changed! Task should finish" 
                         ##### Now we need to update the tasks based on the proposed scheduling time
                         for key, task in task_queue.items():
                             task.update_task(proposed_scheduling_time_dict[key], final_proposed_scheduling_time, tasks_cores[key])   
@@ -357,15 +419,16 @@ def scheduler(workload, nn_info, QoS_dict, frequency, num_total_cores):
                         task_queue[name] = TaskStats(workload[idx][1], next_task_arrival_time + cycle, cycle + final_proposed_scheduling_time, workload[idx][2],\
                                                                 QoS_dict[workload[idx][1]], 0, (nn_info['16 Cores'][workload[idx][1]][0][0], 0), nn_info)
                         del task_arrivals[name]
-                        print('task arrivals', task_arrivals)
+                        # print('task arrivals', task_arrivals)
                         print('{} Arrives'.format(workload[idx][1]), task_queue[name].start_time, task_queue[name].current_time)                
                         cycle += final_proposed_scheduling_time
                         TASK_ARRIVES = True
                         TASK_FINISHES = False
                         PERIOD_REACHED = False
+                        TASK_CS = False
                 else:
                     ##### All the tasks have arrived. Next scheduling time will be either period reached or task finishes
-                    next_scheduling_time = min(next_task_to_finish_time, next_period_time)
+                    next_scheduling_time = min(next_task_to_finish_time, next_period_time, next_task_layer_end_time)
 
                     proposed_scheduling_time_dict = {}
                     proposed_scheduling_time_list = []
@@ -392,6 +455,16 @@ def scheduler(workload, nn_info, QoS_dict, frequency, num_total_cores):
                         TASK_FINISHES = True
                         TASK_ARRIVES = False
                         PERIOD_REACHED = False
+                        TASK_CS = False
+
+                    elif next_scheduling_time == next_task_layer_end_time: # layer 끝나서 CS
+                        for key, task in task_queue.items():
+                            task.update_task(proposed_scheduling_time_dict[key], final_proposed_scheduling_time, tasks_cores[key])
+                            cycle += final_proposed_scheduling_time
+                        TASK_FINISHES = False
+                        TASK_ARRIVES = False
+                        PERIOD_REACHED = False
+                        TASK_CS = True
                         
                     
                     elif next_scheduling_time == next_period_time:
@@ -408,6 +481,7 @@ def scheduler(workload, nn_info, QoS_dict, frequency, num_total_cores):
                         PERIOD_REACHED = True
                         TASK_FINISHES = False
                         TASK_ARRIVES = False
+                        TASK_CS = False
 
             else:
                 ##### Task Queue is empty, next scheduling will be task arrival or period reached!
@@ -451,6 +525,7 @@ def scheduler(workload, nn_info, QoS_dict, frequency, num_total_cores):
                         TASK_FINISHES = False
                         PERIOD_REACHED = False
 
+    print(f'num CS = {num_context_switch}')
     
     return done_tasks_list
 

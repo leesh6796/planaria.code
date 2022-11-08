@@ -45,7 +45,7 @@ def main():
     ### Path to input CSVs of the Planaria performance numbers for various number of subarrays and their optimized fission configuration
     #path_to_input_csv = ast.literal_eval(config.get('csv_path', 'path_to_input_csv_files'))
 
-    exp_name = "BW-350-IF-8-WGT-4"
+    exp_name = "BW-350-IF-0.001-WGT-4"
     path_to_input_csv = f"../numbers/{exp_name}/planaria-hardware-summary-"
 
     ######## Output results file names

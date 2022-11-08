@@ -25,7 +25,7 @@ import grp
 
 
 batch_size = 1
-exp_name = "BW-350-IF-6-WGT-4"
+exp_name = "BW-350-IF-0.001-WGT-4"
 
 ### To load the synthesis results for the systolic subarrays
 results_dir = './results'

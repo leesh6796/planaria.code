@@ -17,11 +17,11 @@ import os
 benchlist = [\
                'GoogleNet', \
                'RESNET-50', \
-            #   'Tiny-YOLO',\
-            #   'SSD-ResNet-34',\
-            #   'SSD-MobileNet-v1',\
-            #   'GNMT',\
-            #   'YOLOv3'\
+              'Tiny-YOLO',\
+              'SSD-ResNet-34',\
+              'SSD-MobileNet-v1',\
+              'GNMT',\
+              'YOLOv3',\
                 'MobileNet-v1', \
                 'AlexNet'
             ]
@@ -63,7 +63,7 @@ def write_to_csv(csv_name, fields, stats, network, csv_path='./'):
             if isinstance(network[l], ConvLayer):
                 f.write('{}, {}\n'.format(l, ', '.join(str(x) for x in stats[l]['total'])))
 
-def get_bench_numbers(nn, sim_obj, batch_size=1):
+def get_bench_numbers(nn, sim_obj, batch_size):
     stats = OrderedDict({})
     for layer_name in nn.layer_dict:
         if layer_name != nn.INPUT_LAYER_KEY:
@@ -75,13 +75,13 @@ def get_bench_numbers(nn, sim_obj, batch_size=1):
                 stats[layer_name] = [s, d, cmx, ex_p_c]
     return stats
 
-def get_bench_numbers(nn, sim_obj, model_name, batch_size=1):
+def get_bench_numbers_solo(nn, sim_obj, model_name, batch_size):
     stats = OrderedDict({})
     for layer_name in nn.layer_dict:
         if layer_name != nn.INPUT_LAYER_KEY:
             layer = nn.layer_dict[layer_name]
             #sim_obj.Search(layer)
-            out = sim_obj.get_cycles(layer, model_name, layer_name, batch_size)
+            out = sim_obj.get_cycles_solo(layer, model_name, layer_name, batch_size)
             if out is not None:
                 s, d, cmx, ex_p_c = out
                 stats[layer_name] = [s, d, cmx, ex_p_c]

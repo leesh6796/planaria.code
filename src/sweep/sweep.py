@@ -53,6 +53,8 @@ class SimulatorSweep(object):
                 nn1, nn2 = benchmarks.get_bench_nn(b)
             else:
                 nn = benchmarks.get_bench_nn(b)
+            
+            assert(nn is not None)
 
             cmx = sim_obj.cmx
             self.logger.info('Simulating Benchmark: {}'.format(b))
@@ -80,7 +82,7 @@ class SimulatorSweep(object):
                 stats = stats_en
             else:
                 if sim_obj.solo_mode:
-                    stats = benchmarks.get_bench_numbers(nn, sim_obj, b, batch_size)
+                    stats = benchmarks.get_bench_numbers_solo(nn, sim_obj, b, batch_size)
                 else:
                     stats = benchmarks.get_bench_numbers(nn, sim_obj, batch_size)
 

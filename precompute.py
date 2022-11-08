@@ -39,7 +39,7 @@ if not os.path.exists(numbers_dir):
 dataframe_list = []
 
 
-for i in range(1, 17):
+for i in range(16, 17):
     config_file = f'./configs/cmx-{i}.ini'
     verbose = False
 
